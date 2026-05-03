@@ -55,7 +55,7 @@ func checkMetricNotLabeled(ctx *v2.Context, call *sitter.Node) {
 	if fnExpr == nil {
 		return
 	}
-	imp := collectPromImports(rootCallNode(call), ctx.Source)
+	imp := getPromImports(ctx)
 	if !callTargetsPromCtor(fnExpr, ctx.Source, imp) {
 		return
 	}
@@ -66,12 +66,13 @@ func checkMetricNotLabeled(ctx *v2.Context, call *sitter.Node) {
 	ctx.Emit(call, "prometheus metric created without labelnames; cannot split by service or route")
 }
 
-// rootCallNode walks parents to the module root.
-func rootCallNode(n *sitter.Node) *sitter.Node {
-	for n != nil && n.Parent() != nil {
-		n = n.Parent()
-	}
-	return n
+// getPromImports memoizes the per-file prometheus_client import shape
+// on Context. Without the cache we walked the entire AST once per
+// `call` node — O(file_size × call_count). After: O(file_size).
+func getPromImports(ctx *v2.Context) *promImports {
+	return ctx.Cached("server.prom_imports", func() any {
+		return collectPromImports(ctx.Root, ctx.Source)
+	}).(*promImports)
 }
 
 // callTargetsPromCtor reports whether fnExpr is a call to one of the

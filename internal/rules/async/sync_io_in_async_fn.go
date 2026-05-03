@@ -63,7 +63,7 @@ func checkSyncIOInAsyncFn(ctx *v2.Context, fn *sitter.Node) {
 		return
 	}
 
-	imports := collectFromImports(rootOf(fn), ctx.Source)
+	imports := getFromImports(ctx)
 
 	walkSameAsyncScope(body, func(n *sitter.Node) {
 		if n.Type() != "call" {
@@ -191,10 +191,11 @@ func collectFromImports(root *sitter.Node, src []byte) map[string]bool {
 	return out
 }
 
-// rootOf walks parents until it finds the module root.
-func rootOf(n *sitter.Node) *sitter.Node {
-	for n != nil && n.Parent() != nil {
-		n = n.Parent()
-	}
-	return n
+// getFromImports memoizes the per-file from-import map on Context.
+// Other async rules also need it (lock-held-across-await calls
+// getLockBindings which walks the same root once cached).
+func getFromImports(ctx *v2.Context) map[string]bool {
+	return ctx.Cached("async.from_imports", func() any {
+		return collectFromImports(ctx.Root, ctx.Source)
+	}).(map[string]bool)
 }

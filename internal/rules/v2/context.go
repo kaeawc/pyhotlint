@@ -28,23 +28,59 @@ type Finding struct {
 // Oracle is non-nil but may be a Stub; rules check `r.Known` on each
 // returned Result and skip the finding when the oracle declined to
 // resolve the question.
+//
+// Root is the file's tree-sitter module root. Rules that need to scan
+// the whole file (imports, global assignments, comments) walk from
+// here rather than calling Parent() repeatedly from the dispatched
+// node.
 type Context struct {
 	File    string
 	Source  []byte
+	Root    *sitter.Node
 	Project *project.Project
 	Oracle  oracle.Oracle
 	rule    *Rule
 	results *[]Finding
+	cache   map[string]any
 }
 
 // NewContext wires a Context to the slice it should append findings to.
 // Used by the dispatcher and by tests. proj may be nil; orc may be
 // nil — Stub is substituted in that case.
-func NewContext(file string, source []byte, proj *project.Project, orc oracle.Oracle, results *[]Finding) *Context {
+func NewContext(file string, source []byte, root *sitter.Node, proj *project.Project, orc oracle.Oracle, results *[]Finding) *Context {
 	if orc == nil {
 		orc = oracle.Stub{}
 	}
-	return &Context{File: file, Source: source, Project: proj, Oracle: orc, results: results}
+	return &Context{
+		File:    file,
+		Source:  source,
+		Root:    root,
+		Project: proj,
+		Oracle:  orc,
+		results: results,
+		cache:   map[string]any{},
+	}
+}
+
+// Cached memoizes per-file derived data so repeated rule callbacks
+// against the same file do not re-walk the source. The cache lives
+// for the lifetime of a single Run invocation; each new file gets a
+// fresh Context with an empty cache.
+//
+// Build must be deterministic and pure with respect to the file's
+// source — the result is cached forever within the file. Callers
+// type-assert the return value to whatever type build returned.
+//
+// Convention: keys are namespaced by package, e.g. "async.from_imports",
+// "server.prom_imports", "tensor.device_tracker". Avoid generic keys
+// that could collide between rule packages.
+func (c *Context) Cached(key string, build func() any) any {
+	if v, ok := c.cache[key]; ok {
+		return v
+	}
+	v := build()
+	c.cache[key] = v
+	return v
 }
 
 // SetRule is called by the dispatcher before each Check invocation so
