@@ -3,6 +3,7 @@ package v2
 import (
 	sitter "github.com/smacker/go-tree-sitter"
 
+	"github.com/kaeawc/pyhotlint/internal/project"
 	"github.com/kaeawc/pyhotlint/internal/suppress"
 )
 
@@ -11,7 +12,10 @@ import (
 // traversal of the named-and-anonymous tree. Findings whose
 // (rule, line) is covered by a `# pyhotlint: ignore[...]` or
 // `# pyhotlint: ignore-file[...]` pragma are dropped before return.
-func Run(rules []*Rule, file string, source []byte, root *sitter.Node) []Finding {
+//
+// proj may be nil — rules that need project context (typically those
+// declaring NeedsProject) check `ctx.Project == nil` and bail.
+func Run(rules []*Rule, proj *project.Project, file string, source []byte, root *sitter.Node) []Finding {
 	var findings []Finding
 	if root == nil {
 		return findings
@@ -30,7 +34,7 @@ func Run(rules []*Rule, file string, source []byte, root *sitter.Node) []Finding
 		return findings
 	}
 
-	ctx := NewContext(file, source, &findings)
+	ctx := NewContext(file, source, proj, &findings)
 	walk(root, func(n *sitter.Node) {
 		rs := byType[n.Type()]
 		for _, r := range rs {
