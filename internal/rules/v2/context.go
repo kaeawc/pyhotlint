@@ -2,6 +2,8 @@ package v2
 
 import (
 	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/kaeawc/pyhotlint/internal/project"
 )
 
 // Finding is the per-rule analysis output.
@@ -18,17 +20,21 @@ type Finding struct {
 }
 
 // Context is handed to each rule's Check callback.
+//
+// Project may be nil — version-drift rules guard with `c.Project ==
+// nil` and skip when there's no project context.
 type Context struct {
 	File    string
 	Source  []byte
+	Project *project.Project
 	rule    *Rule
 	results *[]Finding
 }
 
 // NewContext wires a Context to the slice it should append findings to.
-// Used by the dispatcher and by tests.
-func NewContext(file string, source []byte, results *[]Finding) *Context {
-	return &Context{File: file, Source: source, results: results}
+// Used by the dispatcher and by tests. proj may be nil.
+func NewContext(file string, source []byte, proj *project.Project, results *[]Finding) *Context {
+	return &Context{File: file, Source: source, Project: proj, results: results}
 }
 
 // SetRule is called by the dispatcher before each Check invocation so

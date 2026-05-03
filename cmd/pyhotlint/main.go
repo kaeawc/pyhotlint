@@ -11,6 +11,7 @@ import (
 
 	"github.com/kaeawc/pyhotlint/internal/config"
 	"github.com/kaeawc/pyhotlint/internal/output"
+	"github.com/kaeawc/pyhotlint/internal/project"
 	_ "github.com/kaeawc/pyhotlint/internal/rules" // registers rules
 	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 	"github.com/kaeawc/pyhotlint/internal/scanner"
@@ -51,7 +52,8 @@ func main() {
 		os.Exit(2)
 	}
 
-	findings, parseFailed := analyzeFiles(rules, files)
+	proj := loadProject()
+	findings, parseFailed := analyzeFiles(rules, proj, files)
 	if err := emit(*format, findings, rules); err != nil {
 		fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
 		os.Exit(1)
@@ -111,8 +113,9 @@ func loadConfig(explicit string) (*config.Config, string, error) {
 
 // analyzeFiles runs every rule across every file and concatenates the
 // results. Returns (findings, parseFailed); parseFailed is true if any
-// file could not be parsed (a hard error reported to stderr).
-func analyzeFiles(rules []*v2.Rule, files []string) ([]v2.Finding, bool) {
+// file could not be parsed (a hard error reported to stderr). proj may
+// be nil when no pyproject.toml was discovered.
+func analyzeFiles(rules []*v2.Rule, proj *project.Project, files []string) ([]v2.Finding, bool) {
 	var all []v2.Finding
 	parseFailed := false
 	for _, p := range files {
@@ -122,9 +125,25 @@ func analyzeFiles(rules []*v2.Rule, files []string) ([]v2.Finding, bool) {
 			parseFailed = true
 			continue
 		}
-		findings := v2.Run(rules, pf.Path, pf.Source, pf.Tree.RootNode())
+		findings := v2.Run(rules, proj, pf.Path, pf.Source, pf.Tree.RootNode())
 		all = append(all, findings...)
 		pf.Close()
 	}
 	return all, parseFailed
+}
+
+// loadProject auto-discovers a pyproject.toml from cwd. Errors are
+// surfaced to stderr but do not abort the run; rules that need
+// project context simply skip.
+func loadProject() *project.Project {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	proj, err := project.Load(cwd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pyhotlint: project metadata: %v\n", err)
+		return nil
+	}
+	return proj
 }
