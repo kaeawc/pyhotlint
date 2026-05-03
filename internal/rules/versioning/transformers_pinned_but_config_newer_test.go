@@ -26,7 +26,7 @@ func runWithProject(t *testing.T, src string, proj *project.Project) []v2.Findin
 	if len(rules) == 0 {
 		t.Fatal("rule not registered")
 	}
-	return v2.Run(rules, proj, pf.Path, pf.Source, pf.Tree.RootNode())
+	return v2.Run(rules, proj, nil, pf.Path, pf.Source, pf.Tree.RootNode())
 }
 
 func newProject(transformersVersion string) *project.Project {
