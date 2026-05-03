@@ -22,8 +22,9 @@ var version = "dev"
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	configPath := flag.String("config", "", "path to pyhotlint.yml; auto-discovered when empty")
+	format := flag.String("format", "json", "output format: json|sarif")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: pyhotlint [--config FILE] <path> [path ...]")
+		fmt.Fprintln(os.Stderr, "usage: pyhotlint [--config FILE] [--format json|sarif] <path> [path ...]")
 		fmt.Fprintln(os.Stderr, "  paths may be files, directories (walked recursively), or shell globs")
 	}
 	flag.Parse()
@@ -51,7 +52,7 @@ func main() {
 	}
 
 	findings, parseFailed := analyzeFiles(rules, files)
-	if err := output.WriteJSON(os.Stdout, findings); err != nil {
+	if err := emit(*format, findings, rules); err != nil {
 		fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
 		os.Exit(1)
 	}
@@ -60,6 +61,18 @@ func main() {
 		exit = 1
 	}
 	os.Exit(exit)
+}
+
+// emit writes findings in the requested format to stdout.
+func emit(format string, findings []v2.Finding, rules []*v2.Rule) error {
+	switch format {
+	case "json":
+		return output.WriteJSON(os.Stdout, findings)
+	case "sarif":
+		return output.WriteSARIF(os.Stdout, findings, rules, version)
+	default:
+		return fmt.Errorf("unknown --format %q (want json or sarif)", format)
+	}
 }
 
 // resolveRules loads the config (explicit path or auto-discovered),
