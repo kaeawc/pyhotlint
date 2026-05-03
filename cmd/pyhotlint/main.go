@@ -1,6 +1,7 @@
 // pyhotlint analyzes Python source files for inference-server hot-path
-// hazards. MVP: takes one or more file paths, parses them with
-// tree-sitter, runs the registered rules, and emits findings as JSON.
+// hazards. The CLI takes file paths, directories, or shell-style globs;
+// directories are walked recursively (skipping common venv / cache /
+// build dirs). Findings are emitted as a JSON array on stdout.
 package main
 
 import (
@@ -12,12 +13,17 @@ import (
 	_ "github.com/kaeawc/pyhotlint/internal/rules" // registers rules
 	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 	"github.com/kaeawc/pyhotlint/internal/scanner"
+	"github.com/kaeawc/pyhotlint/internal/walker"
 )
 
 var version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: pyhotlint <path> [path ...]")
+		fmt.Fprintln(os.Stderr, "  paths may be files, directories (walked recursively), or shell globs")
+	}
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
@@ -26,14 +32,20 @@ func main() {
 
 	paths := flag.Args()
 	if len(paths) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: pyhotlint <file.py> [file.py ...]")
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	files, err := walker.FindFiles(paths)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
 		os.Exit(2)
 	}
 
 	rules := v2.All()
 	var all []v2.Finding
 	exit := 0
-	for _, p := range paths {
+	for _, p := range files {
 		pf, err := scanner.ParseFile(p)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
@@ -50,7 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 	if len(all) > 0 && exit == 0 {
-		exit = 1 // nonzero when findings exist, like ruff/mypy
+		exit = 1
 	}
 	os.Exit(exit)
 }
