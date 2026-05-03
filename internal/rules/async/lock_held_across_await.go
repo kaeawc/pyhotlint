@@ -39,7 +39,7 @@ func checkLockHeldAcrossAwait(ctx *v2.Context, fn *sitter.Node) {
 	if body == nil {
 		return
 	}
-	lockNames := collectLockBindings(rootOf(fn), ctx.Source)
+	lockNames := getLockBindings(ctx)
 
 	walkSameAsyncScope(body, func(n *sitter.Node) {
 		if n.Type() != "with_statement" {
@@ -93,6 +93,14 @@ func collectLockBindings(root *sitter.Node, src []byte) map[string]bool {
 	}
 	walk(root)
 	return out
+}
+
+// getLockBindings memoizes collectLockBindings on Context. Walks the
+// file once instead of once per async function_definition node.
+func getLockBindings(ctx *v2.Context) map[string]bool {
+	return ctx.Cached("async.lock_bindings", func() any {
+		return collectLockBindings(ctx.Root, ctx.Source)
+	}).(map[string]bool)
 }
 
 // withHoldsLock reports whether any with-item in the with-statement

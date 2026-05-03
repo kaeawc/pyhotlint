@@ -40,7 +40,7 @@ func Run(rules []*Rule, proj *project.Project, orc oracle.Oracle, file string, s
 		return findings
 	}
 
-	ctx := NewContext(file, source, proj, orc, &findings)
+	ctx := NewContext(file, source, root, proj, orc, &findings)
 	walk(root, func(n *sitter.Node) {
 		rs := byType[n.Type()]
 		for _, r := range rs {
