@@ -34,8 +34,7 @@ func checkPickleLoad(ctx *v2.Context, call *sitter.Node) {
 	if fnExpr == nil || fnExpr.Type() != "attribute" {
 		return
 	}
-	text := string(ctx.Source[fnExpr.StartByte():fnExpr.EndByte()])
-	if msg, ok := pickleLoadCalls[text]; ok {
+	if msg, ok := pickleLoadCalls[string(ctx.Source[fnExpr.StartByte():fnExpr.EndByte()])]; ok {
 		ctx.Emit(call, msg)
 	}
 }
