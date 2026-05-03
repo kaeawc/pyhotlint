@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 // WriteJSON emits findings as a single JSON array.

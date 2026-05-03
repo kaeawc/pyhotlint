@@ -5,7 +5,7 @@ package server
 import (
 	sitter "github.com/smacker/go-tree-sitter"
 
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 // pickleLoadCalls maps the dotted call name to the message used in the

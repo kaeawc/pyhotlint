@@ -6,7 +6,7 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 // noGradContexts enumerates context-manager call expressions that

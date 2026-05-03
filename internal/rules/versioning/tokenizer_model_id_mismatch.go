@@ -7,7 +7,7 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 func init() {
@@ -30,53 +30,59 @@ type fromPretrainedCall struct {
 }
 
 func checkTokenizerModelIDMismatch(ctx *v2.Context, module *sitter.Node) {
-	var calls []fromPretrainedCall
-	var walk func(n, scope *sitter.Node)
-	walk = func(n, scope *sitter.Node) {
-		t := n.Type()
-		if t == "function_definition" {
-			scope = n
-		}
-		if t == "call" {
-			if entry, ok := classifyFromPretrained(n, ctx.Source); ok {
-				entry.scope = scope
-				calls = append(calls, entry)
-			}
-		}
-		count := int(n.ChildCount())
-		for i := 0; i < count; i++ {
-			c := n.Child(i)
-			if c == nil {
-				continue
-			}
-			walk(c, scope)
-		}
-	}
-	walk(module, module)
-
+	calls := collectFromPretrainedCalls(module, module, ctx.Source)
 	byScope := map[*sitter.Node][]fromPretrainedCall{}
 	for _, c := range calls {
 		byScope[c.scope] = append(byScope[c.scope], c)
 	}
 	for _, group := range byScope {
-		var modelID string
-		var hasModel bool
-		for _, c := range group {
-			if c.kind == "model" {
-				modelID = c.id
-				hasModel = true
-				break
-			}
-		}
-		if !hasModel {
-			continue
-		}
-		for _, c := range group {
-			if c.kind == "tokenizer" && c.id != modelID {
-				ctx.Emit(c.node, fmt.Sprintf("tokenizer ID %q does not match model ID %q in the same scope", c.id, modelID))
-			}
+		emitMismatches(ctx, group)
+	}
+}
+
+// collectFromPretrainedCalls walks the subtree rooted at n, attributing
+// each from_pretrained call to its nearest enclosing function (or to
+// the module when at top level).
+func collectFromPretrainedCalls(n, scope *sitter.Node, src []byte) []fromPretrainedCall {
+	var out []fromPretrainedCall
+	if n.Type() == "function_definition" {
+		scope = n
+	}
+	if n.Type() == "call" {
+		if entry, ok := classifyFromPretrained(n, src); ok {
+			entry.scope = scope
+			out = append(out, entry)
 		}
 	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		c := n.Child(i)
+		if c == nil {
+			continue
+		}
+		out = append(out, collectFromPretrainedCalls(c, scope, src)...)
+	}
+	return out
+}
+
+func emitMismatches(ctx *v2.Context, group []fromPretrainedCall) {
+	modelID, ok := firstModelID(group)
+	if !ok {
+		return
+	}
+	for _, c := range group {
+		if c.kind == "tokenizer" && c.id != modelID {
+			ctx.Emit(c.node, fmt.Sprintf("tokenizer ID %q does not match model ID %q in the same scope", c.id, modelID))
+		}
+	}
+}
+
+func firstModelID(group []fromPretrainedCall) (string, bool) {
+	for _, c := range group {
+		if c.kind == "model" {
+			return c.id, true
+		}
+	}
+	return "", false
 }
 
 func classifyFromPretrained(call *sitter.Node, src []byte) (fromPretrainedCall, bool) {

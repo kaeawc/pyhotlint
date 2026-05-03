@@ -10,7 +10,7 @@ import (
 
 	"github.com/kaeawc/pyhotlint/internal/output"
 	_ "github.com/kaeawc/pyhotlint/internal/rules" // registers rules
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 	"github.com/kaeawc/pyhotlint/internal/scanner"
 )
 

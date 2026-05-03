@@ -23,7 +23,7 @@ func New() *Oracle { return &Oracle{} }
 
 // DeviceOf returns the device a tensor expression resolves to, or
 // Unknown when undecidable.
-func (o *Oracle) DeviceOf(expr string) Result { return Unknown }
+func (o *Oracle) DeviceOf(_ string) Result { return Unknown }
 
 // SubclassesNNModule reports whether a class is an nn.Module subclass.
-func (o *Oracle) SubclassesNNModule(qualName string) Result { return Unknown }
+func (o *Oracle) SubclassesNNModule(_ string) Result { return Unknown }

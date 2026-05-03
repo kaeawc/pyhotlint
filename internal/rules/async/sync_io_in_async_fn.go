@@ -2,12 +2,10 @@
 package async
 
 import (
-	"fmt"
 	"strings"
 
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 	sitter "github.com/smacker/go-tree-sitter"
-
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 // blockingCalls maps a fully qualified dotted call name to the human
@@ -17,18 +15,18 @@ import (
 // `time.sleep`, only `time.sleep` itself or `sleep` from `from time import sleep`
 // (handled separately below via the import-tracking pass).
 var blockingCalls = map[string]string{
-	"time.sleep":             "time.sleep blocks the event loop; use asyncio.sleep",
-	"requests.get":           "requests.get is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.post":          "requests.post is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.put":           "requests.put is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.patch":         "requests.patch is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.delete":        "requests.delete is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.head":          "requests.head is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"requests.request":       "requests.request is sync HTTP; use httpx.AsyncClient or aiohttp",
-	"urllib.request.urlopen": "urllib.request.urlopen blocks; use an async HTTP client",
-	"subprocess.run":         "subprocess.run blocks; use asyncio.create_subprocess_exec",
-	"subprocess.call":        "subprocess.call blocks; use asyncio.create_subprocess_exec",
-	"subprocess.check_call":  "subprocess.check_call blocks; use asyncio.create_subprocess_exec",
+	"time.sleep":              "time.sleep blocks the event loop; use asyncio.sleep",
+	"requests.get":            "requests.get is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.post":           "requests.post is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.put":            "requests.put is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.patch":          "requests.patch is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.delete":         "requests.delete is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.head":           "requests.head is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"requests.request":        "requests.request is sync HTTP; use httpx.AsyncClient or aiohttp",
+	"urllib.request.urlopen":  "urllib.request.urlopen blocks; use an async HTTP client",
+	"subprocess.run":          "subprocess.run blocks; use asyncio.create_subprocess_exec",
+	"subprocess.call":         "subprocess.call blocks; use asyncio.create_subprocess_exec",
+	"subprocess.check_call":   "subprocess.check_call blocks; use asyncio.create_subprocess_exec",
 	"subprocess.check_output": "subprocess.check_output blocks; use asyncio.create_subprocess_exec",
 }
 
@@ -89,7 +87,7 @@ func checkSyncIOInAsyncFn(ctx *v2.Context, fn *sitter.Node) {
 				}
 			}
 			if text == "open" {
-				ctx.Emit(n, fmt.Sprintf("open() blocks; use aiofiles or asyncio.to_thread"))
+				ctx.Emit(n, "open() blocks; use aiofiles or asyncio.to_thread")
 			}
 		}
 	})

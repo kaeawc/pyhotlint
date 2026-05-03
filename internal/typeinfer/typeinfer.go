@@ -10,4 +10,4 @@ type Resolver struct{}
 func New() *Resolver { return &Resolver{} }
 
 // TypeOf returns the inferred type of expr, or "" when unknown.
-func (r *Resolver) TypeOf(expr string) string { return "" }
+func (r *Resolver) TypeOf(_ string) string { return "" }

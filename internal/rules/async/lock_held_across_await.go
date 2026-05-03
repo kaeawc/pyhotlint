@@ -5,7 +5,7 @@ import (
 
 	sitter "github.com/smacker/go-tree-sitter"
 
-	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+	v2 "github.com/kaeawc/pyhotlint/internal/rules/v2"
 )
 
 // lockConstructors enumerates the call expressions that bind a name to
@@ -98,41 +98,50 @@ func collectLockBindings(root *sitter.Node, src []byte) map[string]bool {
 // withHoldsLock reports whether any with-item in the with-statement
 // resolves to a known lock instance.
 func withHoldsLock(withStmt *sitter.Node, src []byte, lockNames map[string]bool) bool {
-	count := int(withStmt.ChildCount())
-	for i := 0; i < count; i++ {
+	for i := 0; i < int(withStmt.ChildCount()); i++ {
 		c := withStmt.Child(i)
 		if c == nil || c.Type() != "with_clause" {
 			continue
 		}
-		ic := int(c.ChildCount())
-		for j := 0; j < ic; j++ {
-			item := c.Child(j)
-			if item == nil || item.Type() != "with_item" {
-				continue
-			}
-			val := item.ChildByFieldName("value")
-			if val == nil {
-				val = item.NamedChild(0)
-			}
-			if val == nil {
-				continue
-			}
-			switch val.Type() {
-			case "call":
-				callFn := val.ChildByFieldName("function")
-				if callFn != nil {
-					name := strings.TrimSpace(string(src[callFn.StartByte():callFn.EndByte()]))
-					if lockConstructors[name] {
-						return true
-					}
-				}
-			case "identifier":
-				name := strings.TrimSpace(string(src[val.StartByte():val.EndByte()]))
-				if lockNames[name] {
-					return true
-				}
-			}
+		if withClauseHoldsLock(c, src, lockNames) {
+			return true
 		}
+	}
+	return false
+}
+
+func withClauseHoldsLock(clause *sitter.Node, src []byte, lockNames map[string]bool) bool {
+	for j := 0; j < int(clause.ChildCount()); j++ {
+		item := clause.Child(j)
+		if item == nil || item.Type() != "with_item" {
+			continue
+		}
+		val := item.ChildByFieldName("value")
+		if val == nil {
+			val = item.NamedChild(0)
+		}
+		if withItemHoldsLock(val, src, lockNames) {
+			return true
+		}
+	}
+	return false
+}
+
+func withItemHoldsLock(val *sitter.Node, src []byte, lockNames map[string]bool) bool {
+	if val == nil {
+		return false
+	}
+	switch val.Type() {
+	case "call":
+		callFn := val.ChildByFieldName("function")
+		if callFn == nil {
+			return false
+		}
+		name := strings.TrimSpace(string(src[callFn.StartByte():callFn.EndByte()]))
+		return lockConstructors[name]
+	case "identifier":
+		name := strings.TrimSpace(string(src[val.StartByte():val.EndByte()]))
+		return lockNames[name]
 	}
 	return false
 }
