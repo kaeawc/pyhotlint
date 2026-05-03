@@ -2,11 +2,15 @@ package v2
 
 import (
 	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/kaeawc/pyhotlint/internal/suppress"
 )
 
 // Run executes rules against a parsed file. Each rule sees every node
 // whose type matches its NodeTypes set. The walk is a single preorder
-// traversal of the named-and-anonymous tree.
+// traversal of the named-and-anonymous tree. Findings whose
+// (rule, line) is covered by a `# pyhotlint: ignore[...]` or
+// `# pyhotlint: ignore-file[...]` pragma are dropped before return.
 func Run(rules []*Rule, file string, source []byte, root *sitter.Node) []Finding {
 	var findings []Finding
 	if root == nil {
@@ -34,7 +38,23 @@ func Run(rules []*Rule, file string, source []byte, root *sitter.Node) []Finding
 			r.Check(ctx, n)
 		}
 	})
-	return findings
+
+	return filterSuppressed(findings, source)
+}
+
+func filterSuppressed(findings []Finding, source []byte) []Finding {
+	if len(findings) == 0 {
+		return findings
+	}
+	supp := suppress.Parse(source)
+	out := findings[:0]
+	for _, f := range findings {
+		if supp.IsSuppressed(f.Rule, f.Line) {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // walk performs a preorder traversal over named children using a tree
