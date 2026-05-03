@@ -24,16 +24,25 @@ var version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
+	listRules := flag.Bool("list-rules", false, "print every registered rule and exit")
 	configPath := flag.String("config", "", "path to pyhotlint.yml; auto-discovered when empty")
 	format := flag.String("format", "json", "output format: json|sarif")
 	enableOracle := flag.Bool("oracle", false, "start the PyOracle Python subprocess for rules that need it")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: pyhotlint [--config FILE] [--format json|sarif] [--oracle] <path> [path ...]")
+		fmt.Fprintln(os.Stderr, "       pyhotlint --list-rules")
 		fmt.Fprintln(os.Stderr, "  paths may be files, directories (walked recursively), or shell globs")
 	}
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version)
+		return
+	}
+	if *listRules {
+		if err := output.WriteRuleList(os.Stdout, v2.All()); err != nil {
+			fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
