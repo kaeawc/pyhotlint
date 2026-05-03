@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# pyhotlint pre-commit hook — runs `make ci-fast` (fmt-check + vet +
+# build + test). Bypass with `git commit --no-verify` if you really
+# need to land WIP. The full CI suite runs on the resulting PR.
+
+set -euo pipefail
+
+# Resolve repo root from the hook directory; works regardless of cwd.
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+if ! command -v go >/dev/null 2>&1; then
+    echo "pyhotlint pre-commit: go not found on PATH; skipping" >&2
+    exit 0
+fi
+
+exec make --no-print-directory ci-fast
