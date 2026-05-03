@@ -3,6 +3,7 @@ package v2
 import (
 	sitter "github.com/smacker/go-tree-sitter"
 
+	"github.com/kaeawc/pyhotlint/internal/oracle"
 	"github.com/kaeawc/pyhotlint/internal/project"
 	"github.com/kaeawc/pyhotlint/internal/suppress"
 )
@@ -15,7 +16,12 @@ import (
 //
 // proj may be nil — rules that need project context (typically those
 // declaring NeedsProject) check `ctx.Project == nil` and bail.
-func Run(rules []*Rule, proj *project.Project, file string, source []byte, root *sitter.Node) []Finding {
+//
+// orc may be nil; the dispatcher substitutes oracle.Stub so rule code
+// can call ctx.Oracle.* without a nil check. Rules read the Known
+// flag on each Result and treat unknown answers as "no oracle
+// available".
+func Run(rules []*Rule, proj *project.Project, orc oracle.Oracle, file string, source []byte, root *sitter.Node) []Finding {
 	var findings []Finding
 	if root == nil {
 		return findings
@@ -34,7 +40,7 @@ func Run(rules []*Rule, proj *project.Project, file string, source []byte, root 
 		return findings
 	}
 
-	ctx := NewContext(file, source, proj, &findings)
+	ctx := NewContext(file, source, proj, orc, &findings)
 	walk(root, func(n *sitter.Node) {
 		rs := byType[n.Type()]
 		for _, r := range rs {

@@ -3,6 +3,7 @@ package v2
 import (
 	sitter "github.com/smacker/go-tree-sitter"
 
+	"github.com/kaeawc/pyhotlint/internal/oracle"
 	"github.com/kaeawc/pyhotlint/internal/project"
 )
 
@@ -23,18 +24,27 @@ type Finding struct {
 //
 // Project may be nil — version-drift rules guard with `c.Project ==
 // nil` and skip when there's no project context.
+//
+// Oracle is non-nil but may be a Stub; rules check `r.Known` on each
+// returned Result and skip the finding when the oracle declined to
+// resolve the question.
 type Context struct {
 	File    string
 	Source  []byte
 	Project *project.Project
+	Oracle  oracle.Oracle
 	rule    *Rule
 	results *[]Finding
 }
 
 // NewContext wires a Context to the slice it should append findings to.
-// Used by the dispatcher and by tests. proj may be nil.
-func NewContext(file string, source []byte, proj *project.Project, results *[]Finding) *Context {
-	return &Context{File: file, Source: source, Project: proj, results: results}
+// Used by the dispatcher and by tests. proj may be nil; orc may be
+// nil — Stub is substituted in that case.
+func NewContext(file string, source []byte, proj *project.Project, orc oracle.Oracle, results *[]Finding) *Context {
+	if orc == nil {
+		orc = oracle.Stub{}
+	}
+	return &Context{File: file, Source: source, Project: proj, Oracle: orc, results: results}
 }
 
 // SetRule is called by the dispatcher before each Check invocation so

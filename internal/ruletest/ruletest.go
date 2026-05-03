@@ -54,7 +54,7 @@ func RunRule(t *testing.T, ruleID, path string) []v2.Finding {
 	if len(rules) == 0 {
 		t.Fatalf("rule %q not registered", ruleID)
 	}
-	return v2.Run(rules, nil, pf.Path, pf.Source, pf.Tree.RootNode())
+	return v2.Run(rules, nil, nil, pf.Path, pf.Source, pf.Tree.RootNode())
 }
 
 // WalkPositives runs the rule against every file in the positive bucket

@@ -5,11 +5,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/kaeawc/pyhotlint/internal/config"
+	"github.com/kaeawc/pyhotlint/internal/oracle"
 	"github.com/kaeawc/pyhotlint/internal/output"
 	"github.com/kaeawc/pyhotlint/internal/project"
 	_ "github.com/kaeawc/pyhotlint/internal/rules" // registers rules
@@ -24,8 +26,9 @@ func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	configPath := flag.String("config", "", "path to pyhotlint.yml; auto-discovered when empty")
 	format := flag.String("format", "json", "output format: json|sarif")
+	enableOracle := flag.Bool("oracle", false, "start the PyOracle Python subprocess for rules that need it")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: pyhotlint [--config FILE] [--format json|sarif] <path> [path ...]")
+		fmt.Fprintln(os.Stderr, "usage: pyhotlint [--config FILE] [--format json|sarif] [--oracle] <path> [path ...]")
 		fmt.Fprintln(os.Stderr, "  paths may be files, directories (walked recursively), or shell globs")
 	}
 	flag.Parse()
@@ -53,7 +56,9 @@ func main() {
 	}
 
 	proj := loadProject()
-	findings, parseFailed := analyzeFiles(rules, proj, files)
+	orc := loadOracle(*enableOracle, proj)
+	defer orc.Close()
+	findings, parseFailed := analyzeFiles(rules, proj, orc, files)
 	if err := emit(*format, findings, rules); err != nil {
 		fmt.Fprintf(os.Stderr, "pyhotlint: %v\n", err)
 		os.Exit(1)
@@ -115,7 +120,7 @@ func loadConfig(explicit string) (*config.Config, string, error) {
 // results. Returns (findings, parseFailed); parseFailed is true if any
 // file could not be parsed (a hard error reported to stderr). proj may
 // be nil when no pyproject.toml was discovered.
-func analyzeFiles(rules []*v2.Rule, proj *project.Project, files []string) ([]v2.Finding, bool) {
+func analyzeFiles(rules []*v2.Rule, proj *project.Project, orc oracle.Oracle, files []string) ([]v2.Finding, bool) {
 	var all []v2.Finding
 	parseFailed := false
 	for _, p := range files {
@@ -125,11 +130,36 @@ func analyzeFiles(rules []*v2.Rule, proj *project.Project, files []string) ([]v2
 			parseFailed = true
 			continue
 		}
-		findings := v2.Run(rules, proj, pf.Path, pf.Source, pf.Tree.RootNode())
+		findings := v2.Run(rules, proj, orc, pf.Path, pf.Source, pf.Tree.RootNode())
 		all = append(all, findings...)
 		pf.Close()
 	}
 	return all, parseFailed
+}
+
+// loadOracle starts the PyOracle subprocess when --oracle is set and a
+// Python interpreter is discoverable. Failures are surfaced to stderr
+// but do not abort the run; rules that need oracle context simply
+// observe Unknown and skip.
+func loadOracle(enable bool, proj *project.Project) oracle.Oracle {
+	if !enable {
+		return oracle.Stub{}
+	}
+	root := ""
+	if proj != nil {
+		root = proj.Root
+	}
+	python := oracle.DiscoverPython(root)
+	if python == "" {
+		fmt.Fprintln(os.Stderr, "pyhotlint: --oracle requested but no python interpreter found; using stub")
+		return oracle.Stub{}
+	}
+	s, err := oracle.Start(context.Background(), python)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "pyhotlint: oracle start failed: %v; using stub\n", err)
+		return oracle.Stub{}
+	}
+	return s
 }
 
 // loadProject auto-discovers a pyproject.toml from cwd. Errors are
