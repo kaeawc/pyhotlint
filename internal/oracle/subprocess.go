@@ -36,7 +36,10 @@ func Start(ctx context.Context, python string) (*Subprocess, error) {
 	if python == "" {
 		return nil, fmt.Errorf("oracle: empty python path")
 	}
-	cmd := exec.CommandContext(ctx, python, "-c", helperScript) //nolint:gosec // python is a trusted local path
+	// #nosec G204 -- the python path is discovered from the project's
+	// own venv or the user's PATH; running it is the point of the
+	// oracle. Callers gate this behind --oracle.
+	cmd := exec.CommandContext(ctx, python, "-c", helperScript)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("oracle: stdin pipe: %w", err)
