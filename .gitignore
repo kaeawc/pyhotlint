@@ -1,0 +1,28 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/pyhotlint
+
+# Test binary, built with `go test -c`
+*.test
+
+# Coverage / reports
+*.out
+*report.xml
+
+# Go workspace
+go.work
+go.work.sum
+
+# env
+.env
+.env.local
+
+# editor
+.claude/
+.idea/
+.vscode/
+.DS_Store

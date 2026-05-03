@@ -1,0 +1,211 @@
+package async
+
+import (
+	"strings"
+
+	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/kaeawc/pyhotlint/internal/rules/v2"
+)
+
+// lockConstructors enumerates the call expressions that bind a name to
+// a lock instance. Receiver/owner proof — we do not match a bare
+// `Lock()` call, only the dotted form, to avoid collisions with
+// user-defined Lock classes.
+var lockConstructors = map[string]bool{
+	"threading.Lock":  true,
+	"threading.RLock": true,
+	"asyncio.Lock":    true,
+	"asyncio.RLock":   true,
+}
+
+func init() {
+	v2.Register(&v2.Rule{
+		ID:          "lock-held-across-await",
+		Category:    "async",
+		Severity:    v2.SeverityWarning,
+		Description: "A threading or asyncio Lock is held across an await; risk of deadlock or starvation. If intentional, justify with an inline comment.",
+		NodeTypes:   []string{"function_definition"},
+		Confidence:  0.8,
+		Check:       checkLockHeldAcrossAwait,
+	})
+}
+
+func checkLockHeldAcrossAwait(ctx *v2.Context, fn *sitter.Node) {
+	if !isAsyncFunction(fn) {
+		return
+	}
+	body := fn.ChildByFieldName("body")
+	if body == nil {
+		return
+	}
+	lockNames := collectLockBindings(rootOf(fn), ctx.Source)
+
+	walkSameAsyncScope(body, func(n *sitter.Node) {
+		if n.Type() != "with_statement" {
+			return
+		}
+		if !withHoldsLock(n, ctx.Source, lockNames) {
+			return
+		}
+		withBody := withStatementBody(n)
+		if withBody == nil || !subtreeContainsAwait(withBody) {
+			return
+		}
+		if hasInlineComment(n, ctx.Source) {
+			return
+		}
+		ctx.Emit(n, "lock held across await; release before awaiting or document why this is safe with an inline comment")
+	})
+}
+
+// collectLockBindings scans the file for `<name> = <ctor>()` patterns
+// where ctor is one of the known lock constructors.
+func collectLockBindings(root *sitter.Node, src []byte) map[string]bool {
+	out := map[string]bool{}
+	if root == nil {
+		return out
+	}
+	var walk func(n *sitter.Node)
+	walk = func(n *sitter.Node) {
+		if n.Type() == "assignment" {
+			left := n.ChildByFieldName("left")
+			right := n.ChildByFieldName("right")
+			if left != nil && right != nil && right.Type() == "call" {
+				callFn := right.ChildByFieldName("function")
+				if callFn != nil {
+					ctor := strings.TrimSpace(string(src[callFn.StartByte():callFn.EndByte()]))
+					if lockConstructors[ctor] && left.Type() == "identifier" {
+						varName := strings.TrimSpace(string(src[left.StartByte():left.EndByte()]))
+						out[varName] = true
+					}
+				}
+			}
+		}
+		count := int(n.ChildCount())
+		for i := 0; i < count; i++ {
+			c := n.Child(i)
+			if c == nil {
+				continue
+			}
+			walk(c)
+		}
+	}
+	walk(root)
+	return out
+}
+
+// withHoldsLock reports whether any with-item in the with-statement
+// resolves to a known lock instance.
+func withHoldsLock(withStmt *sitter.Node, src []byte, lockNames map[string]bool) bool {
+	count := int(withStmt.ChildCount())
+	for i := 0; i < count; i++ {
+		c := withStmt.Child(i)
+		if c == nil || c.Type() != "with_clause" {
+			continue
+		}
+		ic := int(c.ChildCount())
+		for j := 0; j < ic; j++ {
+			item := c.Child(j)
+			if item == nil || item.Type() != "with_item" {
+				continue
+			}
+			val := item.ChildByFieldName("value")
+			if val == nil {
+				val = item.NamedChild(0)
+			}
+			if val == nil {
+				continue
+			}
+			switch val.Type() {
+			case "call":
+				callFn := val.ChildByFieldName("function")
+				if callFn != nil {
+					name := strings.TrimSpace(string(src[callFn.StartByte():callFn.EndByte()]))
+					if lockConstructors[name] {
+						return true
+					}
+				}
+			case "identifier":
+				name := strings.TrimSpace(string(src[val.StartByte():val.EndByte()]))
+				if lockNames[name] {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// withStatementBody returns the `block` child of a with_statement.
+func withStatementBody(withStmt *sitter.Node) *sitter.Node {
+	count := int(withStmt.ChildCount())
+	for i := 0; i < count; i++ {
+		c := withStmt.Child(i)
+		if c != nil && c.Type() == "block" {
+			return c
+		}
+	}
+	return withStmt.ChildByFieldName("body")
+}
+
+// subtreeContainsAwait reports whether root has any await expression in
+// its subtree, stopping at nested function/class/lambda boundaries.
+func subtreeContainsAwait(root *sitter.Node) bool {
+	if root == nil {
+		return false
+	}
+	found := false
+	var walk func(n *sitter.Node)
+	walk = func(n *sitter.Node) {
+		if found {
+			return
+		}
+		t := n.Type()
+		if t == "function_definition" || t == "class_definition" || t == "lambda" {
+			return
+		}
+		if t == "await" {
+			found = true
+			return
+		}
+		count := int(n.ChildCount())
+		for i := 0; i < count; i++ {
+			c := n.Child(i)
+			if c == nil {
+				continue
+			}
+			walk(c)
+		}
+	}
+	walk(root)
+	return found
+}
+
+// hasInlineComment reports whether the line containing withStmt's first
+// byte has a `#` comment marker. Naive scan that respects single- and
+// double-quoted strings; good enough for MVP.
+func hasInlineComment(withStmt *sitter.Node, src []byte) bool {
+	start := int(withStmt.StartByte())
+	if start >= len(src) {
+		return false
+	}
+	end := start
+	for end < len(src) && src[end] != '\n' {
+		end++
+	}
+	line := src[start:end]
+	inSingle, inDouble := false, false
+	for i := 0; i < len(line); i++ {
+		ch := line[i]
+		switch {
+		case !inDouble && ch == '\'':
+			inSingle = !inSingle
+		case !inSingle && ch == '"':
+			inDouble = !inDouble
+		case !inSingle && !inDouble && ch == '#':
+			return true
+		}
+	}
+	return false
+}
